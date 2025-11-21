@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TijoloHub | Gestão Profissional</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-950 text-slate-200 font-sans antialiased overflow-hidden">
+
+    <div class="flex h-screen w-full">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-20">
+            <div class="p-6 flex items-center gap-3">
+                <div class="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                    <i class="ph ph-buildings text-2xl"></i>
+                </div>
+                <h1 class="text-xl font-bold text-white">Tijolo<span class="text-sky-500">Hub</span></h1>
+            </div>
+
+            <!-- Nível -->
+            <div class="px-6 mb-6">
+                <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                    <p class="text-[10px] text-slate-400 uppercase font-bold mb-2">Nível</p>
+                    <div class="flex items-center gap-3 mb-3">
+                        <i id="user-level-icon" class="ph ph-seedling text-slate-400 text-lg"></i>
+                        <span id="user-level-name" class="text-sm font-bold text-white">Iniciante</span>
+                    </div>
+                    <div class="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                        <div id="user-level-progress" class="bg-sky-500 h-full rounded-full transition-all duration-1000" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
+                <button id="nav-dashboard" onclick="app.switchTab('dashboard')" class="nav-item active"><i class="ph ph-chart-pie-slice text-xl"></i> Visão Geral</button>
+                <button id="nav-history" onclick="app.switchTab('history')" class="nav-item"><i class="ph ph-clock-counter-clockwise text-xl"></i> Histórico</button>
+                <div class="pt-4 pb-2"><p class="px-2 text-[10px] font-bold text-slate-500 uppercase">Estratégia</p></div>
+                <button id="nav-rebalance" onclick="app.switchTab('rebalance')" class="nav-item"><i class="ph ph-scales text-xl"></i> Aporte Inteligente</button>
+                <button id="nav-analysis" onclick="app.switchTab('analysis')" class="nav-item"><i class="ph ph-heartbeat text-xl"></i> Raio-X</button>
+                <button id="nav-magic" onclick="app.switchTab('magic')" class="nav-item"><i class="ph ph-magic-wand text-xl"></i> Número Mágico</button>
+                <button id="nav-fire" onclick="app.switchTab('fire')" class="nav-item"><i class="ph ph-flag-checkered text-xl"></i> Metas FIRE</button>
+                <button id="nav-simulator" onclick="app.switchTab('simulator')" class="nav-item"><i class="ph ph-crystal-ball text-xl"></i> Simulador</button>
+            </nav>
+
+            <div class="p-4 border-t border-slate-800 bg-slate-900">
+                <button onclick="app.openModal()" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-medium mb-3 shadow-lg transition-colors">
+                    <i class="ph ph-plus-circle text-xl"></i> Novo Aporte
+                </button>
+                <!-- INPUT DE ARQUIVO ATUALIZADO PARA ACEITAR CSV -->
+                <button onclick="document.getElementById('global-file-input').click()" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium text-sm border border-slate-700 transition-colors">
+                    <i class="ph ph-microsoft-excel-logo text-lg text-green-500"></i> Importar Planilha
+                </button>
+                <input type="file" id="global-file-input" accept=".xlsx, .xls, .csv" class="hidden" onchange="dataManager.handleFile(this)">
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col h-screen overflow-hidden bg-[#0b1121]">
+            <header class="h-20 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-8 z-10">
+                <div><h2 id="page-title" class="text-2xl font-bold text-white">Visão Geral</h2><p id="page-subtitle" class="text-sm text-slate-400">Resumo da sua jornada.</p></div>
+                <div class="flex items-center gap-4">
+                    <div class="bg-slate-800/80 px-4 py-2 rounded-lg border border-slate-700 flex items-center gap-3">
+                        <i class="ph ph-coins text-yellow-400 text-lg"></i>
+                        <div><p class="text-[10px] text-slate-400 uppercase font-bold">Renda Mensal</p><span id="header-income" class="text-white font-bold text-lg">R$ 0,00</span></div>
+                    </div>
+                    <button onclick="dataManager.resetApp()" class="w-10 h-10 rounded-full bg-slate-700 hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center transition-colors" title="Limpar Tudo"><i class="ph ph-trash text-xl"></i></button>
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-8 scroll-smooth">
+                
+                <!-- Upload Inicial -->
+                <div id="upload-section" class="max-w-xl mx-auto mt-20 animate-fade-in">
+                    <div class="card-glass rounded-3xl p-10 text-center border border-slate-700/50">
+                        <div class="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-8"><i class="ph ph-rocket-launch text-sky-500 text-5xl"></i></div>
+                        <h3 class="text-3xl font-bold text-white mb-3">Sua jornada começa aqui</h3>
+                        <p class="text-slate-400 mb-8">Importe seu Excel/CSV ou adicione manualmente.</p>
+                        <div class="grid gap-4">
+                            <div onclick="document.getElementById('global-file-input').click()" class="border-2 border-dashed border-slate-600 hover:border-sky-500 bg-slate-800/30 hover:bg-sky-500/5 rounded-xl p-8 cursor-pointer transition-all group">
+                                <i class="ph ph-microsoft-excel-logo text-3xl text-slate-400 group-hover:text-green-400 mb-2"></i>
+                                <p class="text-white font-medium">Importar Planilha</p>
+                                <p class="text-xs text-slate-500 mt-1">Excel (.xlsx) ou CSV (.csv)</p>
+                            </div>
+                            <button onclick="app.openModal()" class="py-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold">Adicionar Manualmente</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DASHBOARD -->
+                <div id="view-dashboard" class="hidden space-y-8 animate-fade-in pb-10">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div class="kpi-card border-l-4 border-sky-500"><div><p class="text-slate-400 text-xs font-bold uppercase">Patrimônio</p><h3 class="text-2xl font-bold text-white" id="total-invested">R$ 0,00</h3></div></div>
+                        <div class="kpi-card border-l-4 border-purple-500"><div><p class="text-slate-400 text-xs font-bold uppercase">Valor Atual</p><h3 class="text-2xl font-bold text-white" id="current-value">R$ 0,00</h3></div></div>
+                        <div class="kpi-card border-l-4 border-green-500"><div><p class="text-slate-400 text-xs font-bold uppercase">Lucro</p><h3 class="text-2xl font-bold text-white" id="total-profit">R$ 0,00</h3></div><span id="profit-percent" class="text-xs font-bold px-2 py-0.5 bg-slate-800 rounded mt-2 inline-block">0%</span></div>
+                        <div class="kpi-card border-l-4 border-yellow-500"><div><p class="text-slate-400 text-xs font-bold uppercase">Proventos (Mês)</p><h3 class="text-2xl font-bold text-white" id="monthly-yield">R$ 0,00</h3></div><div class="text-xs text-slate-500 mt-2">DY: <span id="avg-dy" class="text-white font-bold">0%</span></div></div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="card-glass p-6"><h4 class="section-title mb-4">Evolução Patrimonial</h4><div class="h-64"><canvas id="historyPatrimonyChart"></canvas></div></div>
+                        <div class="card-glass p-6"><h4 class="section-title mb-4">Histórico de Proventos</h4><div class="h-64"><canvas id="historyDividendsChart"></canvas></div></div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="card-glass p-6"><h4 class="section-title mb-4">Alocação por Ativo</h4><div class="h-64 flex justify-center"><canvas id="allocationChart"></canvas></div></div>
+                        <div class="card-glass p-6"><h4 class="section-title mb-4">Exposição Setorial</h4><div class="h-64 flex justify-center"><canvas id="sectorChart"></canvas></div></div>
+                    </div>
+                    <div class="card-glass overflow-hidden">
+                        <div class="p-6 border-b border-slate-700/50 flex justify-between items-center"><h4 class="section-title">Posição Consolidada</h4><button onclick="dataManager.exportTable()" class="text-xs text-sky-400 hover:text-white"><i class="ph ph-export"></i> Exportar</button></div>
+                        <div class="overflow-x-auto"><table class="w-full text-left"><thead class="bg-slate-800/50 text-slate-400 text-xs font-bold uppercase"><tr><th class="p-4 pl-6">Ativo</th><th class="p-4 text-right">Qtd</th><th class="p-4 text-right">PM</th><th class="p-4 text-right">Provento</th><th class="p-4 text-right pr-6">Total Investido</th></tr></thead><tbody id="assets-table-body" class="text-sm divide-y divide-slate-800/50"></tbody></table></div>
+                    </div>
+                </div>
+
+                <!-- HISTÓRICO -->
+                <div id="view-history" class="hidden space-y-6 animate-fade-in pb-20">
+                    <div class="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl flex items-start gap-3">
+                        <i class="ph ph-info text-blue-400 text-xl"></i>
+                        <div><h4 class="text-white font-bold text-sm">Gerenciar Transações</h4><p class="text-slate-400 text-xs">Edite valores incorretos ou remova lançamentos. Os dados são agrupados pelo mês do aporte.</p></div>
+                    </div>
+                    <div id="history-container" class="space-y-6"></div>
+                </div>
+
+                <!-- REBALANCE -->
+                <div id="view-rebalance" class="hidden space-y-6 animate-fade-in pb-20">
+                    <div class="card-glass p-8 border-l-4 border-blue-500 flex justify-between items-center">
+                        <div><h3 class="text-xl font-bold text-white">Aporte Inteligente</h3><p class="text-slate-400 text-sm">Quanto aportar hoje?</p></div>
+                        <div class="flex items-center gap-3 bg-slate-800 p-3 rounded-xl"><span class="text-slate-500">R$</span><input type="number" id="rebalance-amount" value="1000" class="bg-transparent text-white text-2xl font-bold w-32 text-right outline-none" oninput="viewRenderer.renderRebalance()"></div>
+                    </div>
+                    <div class="card-glass overflow-hidden"><div class="p-4 border-b border-slate-700/50 bg-slate-800/30 text-xs font-bold text-slate-500 uppercase grid grid-cols-12 gap-4"><div class="col-span-4">Ativo</div><div class="col-span-2 text-right">Peso Atual</div><div class="col-span-2 text-right">Meta %</div><div class="col-span-2 text-right">Diferença</div><div class="col-span-2 text-right text-sky-400">Ação</div></div><div id="rebalance-grid" class="divide-y divide-slate-800/50"></div></div>
+                </div>
+
+                <!-- ANALYSIS -->
+                <div id="view-analysis" class="hidden animate-fade-in pb-20">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="card-glass p-8 text-center"><div class="relative w-40 h-40 mx-auto mb-4"><svg class="w-full h-full -rotate-90"><circle cx="80" cy="80" r="70" stroke="#1e293b" stroke-width="12" fill="none"/><circle id="score-circle" cx="80" cy="80" r="70" stroke="#22c55e" stroke-width="12" fill="none" stroke-dasharray="440" stroke-dashoffset="0" class="transition-all duration-1000"/></svg><div class="absolute inset-0 flex items-center justify-center"><span id="analysis-score" class="text-5xl font-bold text-white">100</span></div></div><p id="analysis-verdict" class="text-xl font-bold text-green-400">Excelente</p></div>
+                        <div class="lg:col-span-2 space-y-4">
+                            <div class="card-glass p-5 flex gap-4" id="check-diversification"><div class="icon-box"><i class="ph ph-circles-three-plus text-2xl"></i></div><div><h4 class="font-bold text-white">Diversificação</h4><p class="text-sm text-slate-400 msg">...</p></div></div>
+                            <div class="card-glass p-5 flex gap-4" id="check-concentration"><div class="icon-box"><i class="ph ph-target text-2xl"></i></div><div><h4 class="font-bold text-white">Concentração</h4><p class="text-sm text-slate-400 msg">...</p></div></div>
+                            <div class="card-glass p-5 flex gap-4" id="check-sectors"><div class="icon-box"><i class="ph ph-chart-pie text-2xl"></i></div><div><h4 class="font-bold text-white">Setores</h4><p class="text-sm text-slate-400 msg">...</p></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MAGIC -->
+                <div id="view-magic" class="hidden animate-fade-in pb-20">
+                    <div class="bg-yellow-500/10 border border-yellow-500/20 p-6 rounded-2xl mb-8 flex gap-4"><div class="text-yellow-400"><i class="ph ph-sparkle text-2xl"></i></div><div><h4 class="text-white font-bold">Número Mágico</h4><p class="text-slate-400 text-sm">Cotas necessárias para que os dividendos comprem uma nova cota sozinhos.</p></div></div>
+                    <div id="magic-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+                </div>
+
+                <!-- FIRE -->
+                <div id="view-fire" class="hidden animate-fade-in pb-20 space-y-8">
+                    <div class="card-glass p-8 flex justify-between items-center"><div><h3 class="text-2xl font-bold text-white">Meta FIRE</h3><p class="text-slate-400">Renda passiva desejada.</p></div><div class="flex items-center gap-2 bg-slate-800 p-2 rounded-xl"><span class="text-slate-500 pl-2">R$</span><input type="number" id="fire-goal-input" value="5000" class="bg-transparent text-white text-2xl font-bold w-32 text-right outline-none" onchange="viewRenderer.saveFireGoal()"></div></div>
+                    <div class="card-glass p-8"><div class="flex justify-between mb-4"><div><p class="text-slate-400 text-xs font-bold uppercase">Progresso</p><h2 class="text-4xl font-bold text-white"><span id="fire-percentage">0</span>%</h2></div><div class="text-right"><p class="text-sm text-slate-400">Atual: <span id="fire-current-income" class="text-white font-bold">R$ 0,00</span></p></div></div><div class="w-full h-6 bg-slate-800 rounded-full overflow-hidden"><div id="fire-progress-bar" class="h-full bg-gradient-to-r from-sky-500 to-purple-500" style="width: 0%"></div></div></div>
+                    <div class="grid grid-cols-2 gap-6"><div class="card-glass p-6 border-l-4 border-orange-500"><h4 class="font-bold text-white">Tempo Estimado</h4><div id="fire-time-estimation" class="text-2xl font-mono text-white">...</div></div><div class="card-glass p-6 border-l-4 border-green-500"><h4 class="font-bold text-white">Patrimônio Necessário</h4><div id="fire-patrimony-needed" class="text-2xl font-mono text-white">...</div></div></div>
+                </div>
+
+                <!-- SIMULATOR -->
+                <div id="view-simulator" class="hidden space-y-6 animate-fade-in pb-20">
+                    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                        <div class="card-glass p-6 h-fit"><h4 class="section-title mb-6">Parâmetros</h4><div class="space-y-6"><div><label class="label-input">Aporte Mensal</label><input type="number" id="sim-monthly-contribution" value="1000" oninput="viewRenderer.renderSimulation()" class="input-field"></div><div><label class="label-input">Anos</label><input type="range" id="sim-years" min="1" max="30" value="5" oninput="viewRenderer.renderSimulation()" class="w-full accent-sky-500"></div></div></div>
+                        <div class="card-glass p-6 lg:col-span-3"><div class="flex justify-between mb-4"><h4 class="section-title">Projeção</h4><div class="text-right"><p class="text-xs text-slate-400 uppercase">Final</p><p id="sim-final-value" class="text-xl font-bold text-green-400">R$ 0,00</p></div></div><div class="h-80"><canvas id="simulationChart"></canvas></div></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal -->
+    <div id="asset-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700 p-8 rounded-2xl w-full max-w-md shadow-2xl animate-fade-in">
+            <div class="flex justify-between items-center mb-6"><h3 id="modal-title" class="text-xl font-bold text-white">Novo Aporte</h3><button onclick="app.closeModal()" class="text-slate-400 hover:text-white"><i class="ph ph-x text-lg"></i></button></div>
+            <form id="asset-form" onsubmit="dataManager.saveAsset(event)" class="space-y-4">
+                <input type="hidden" id="modal-id">
+                <div><label class="label-input">Data</label><input type="month" id="modal-date" required class="input-field [color-scheme:dark]"></div>
+                <div><label class="label-input">Ticker</label><input type="text" id="modal-ticker" placeholder="EX: HGLG11" required class="input-field uppercase"></div>
+                <div class="grid grid-cols-2 gap-4"><div><label class="label-input">Qtd</label><input type="number" id="modal-qtd" required min="1" class="input-field"></div><div><label class="label-input">Preço</label><input type="number" id="modal-pm" required step="0.01" class="input-field"></div></div>
+                <div><label class="label-input">Provento Unitário (R$)</label><input type="number" id="modal-div" required step="0.01" class="input-field"></div>
+                <div><label class="label-input">Setor</label><select id="modal-sector" class="input-field"><option value="Logística">Logística</option><option value="Papel">Papel</option><option value="Shopping">Shopping</option><option value="Híbrido">Híbrido</option><option value="Lajes">Lajes</option><option value="Fiagro">Fiagro</option><option value="Outros">Outros</option></select></div>
+                <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-3 rounded-xl mt-2">Salvar</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="view.js"></script>
+</body>
+</html>

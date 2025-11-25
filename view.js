@@ -1,16 +1,22 @@
 const app = {
     currentTab: 'dashboard',
+    // Variável para controlar qual aba de mês está selecionada na tela de proventos
+    selectedDividendMonth: null, 
     
     init() {
         const now = new Date();
         document.getElementById('modal-date').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        
+        // Define o mês atual como padrão para a tela de proventos
+        this.selectedDividendMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
         viewRenderer.updateAll();
         this.switchTab('dashboard');
     },
 
     switchTab(tab) {
         this.currentTab = tab;
-        const views = ['dashboard', 'history', 'rebalance', 'analysis', 'magic', 'fire', 'simulator'];
+        const views = ['dashboard', 'history', 'rebalance', 'analysis', 'magic', 'fire', 'simulator', 'dividends'];
         const uploadDiv = document.getElementById('upload-section');
         const hasData = dataManager.transactions.length > 0;
 
@@ -20,16 +26,16 @@ const app = {
             
             if(v === tab) {
                 if(!hasData && tab === 'dashboard') {
-                    el.classList.add('hidden');
-                    uploadDiv.classList.remove('hidden');
+                    if(el) el.classList.add('hidden');
+                    if(uploadDiv) uploadDiv.classList.remove('hidden');
                 } else {
-                    el.classList.remove('hidden');
-                    uploadDiv.classList.add('hidden');
+                    if(el) el.classList.remove('hidden');
+                    if(uploadDiv) uploadDiv.classList.add('hidden');
                 }
                 if(btn) btn.classList.add('active');
                 this.updateHeader(tab);
             } else {
-                el.classList.add('hidden');
+                if(el) el.classList.add('hidden');
                 if(btn) btn.classList.remove('active');
             }
         });
@@ -39,13 +45,15 @@ const app = {
         if(tab === 'analysis') viewRenderer.renderAnalysis();
         if(tab === 'magic') viewRenderer.renderMagic();
         if(tab === 'fire') viewRenderer.renderFire();
+        if(tab === 'dividends') viewRenderer.renderDividends();
         if(tab === 'simulator') setTimeout(() => viewRenderer.renderSimulation(), 100);
     },
 
     updateHeader(tab) {
         const titles = {
-            dashboard: "Visão Geral", history: "Histórico Detalhado", rebalance: "Aporte Inteligente",
-            analysis: "Raio-X da Carteira", magic: "Número Mágico", fire: "Metas FIRE", simulator: "Simulador de Futuro"
+            dashboard: "Visão Geral", history: "Histórico", rebalance: "Aporte Inteligente",
+            analysis: "Raio-X", magic: "Número Mágico", fire: "Metas FIRE", 
+            simulator: "Simulador", dividends: "Gerenciar Proventos"
         };
         document.getElementById('page-title').innerText = titles[tab] || "TijoloHub";
     },
@@ -59,7 +67,6 @@ const app = {
                 document.getElementById('modal-ticker').value = tx.ticker;
                 document.getElementById('modal-qtd').value = tx.qtd;
                 document.getElementById('modal-pm').value = tx.price;
-                document.getElementById('modal-div').value = tx.dividend;
                 document.getElementById('modal-sector').value = tx.sector;
                 document.getElementById('modal-title').innerText = "Editar Aporte";
             }
@@ -104,7 +111,7 @@ const viewRenderer = {
                         </td>
                         <td class="p-4 text-right">${p.qtd}</td>
                         <td class="p-4 text-right text-slate-400">R$ ${p.pm.toFixed(2)}</td>
-                        <td class="p-4 text-right text-yellow-500">R$ ${p.div.toFixed(2)}</td>
+                        <td class="p-4 text-right text-yellow-500" title="Último Informado">R$ ${p.div.toFixed(2)}</td>
                         <td class="p-4 text-right pr-6 font-bold text-white">${dataManager.formatMoney(p.invested)}</td>
                     </tr>`;
             }
@@ -156,33 +163,119 @@ const viewRenderer = {
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10 } } } }
         });
 
-        const timeline = {}; 
-        dataManager.transactions.forEach(t => { 
-            if(!timeline[t.date]) timeline[t.date] = { invested: 0, income: 0 };
-            timeline[t.date].invested += (t.qtd * t.price);
-            timeline[t.date].income += (t.qtd * t.dividend);
-        });
-        
-        const dates = Object.keys(timeline).sort();
-        let accInv = 0;
-        const invData = dates.map(d => { accInv += timeline[d].invested; return accInv; });
-        const incData = dates.map(d => timeline[d].income);
-
         const ctxHist = document.getElementById('historyPatrimonyChart');
         if(this.charts.hist) this.charts.hist.destroy();
         this.charts.hist = new Chart(ctxHist, {
             type: 'line',
-            data: { labels: dates, datasets: [{ label: 'Investido', data: invData, borderColor: '#0ea5e9', tension: 0.4, fill: true, backgroundColor: 'rgba(14, 165, 233, 0.1)' }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#1e293b' } } } }
+            data: { 
+                labels: ['Início', 'Hoje'], 
+                datasets: [{ label: 'Investido', data: [0, portfolio.reduce((a,b)=>a+b.invested,0)], borderColor: '#0ea5e9' }] 
+            },
+            options: { responsive: true, maintainAspectRatio: false }
         });
 
         const ctxDiv = document.getElementById('historyDividendsChart');
         if(this.charts.div) this.charts.div.destroy();
         this.charts.div = new Chart(ctxDiv, {
             type: 'bar',
-            data: { labels: dates, datasets: [{ label: 'Proventos', data: incData, backgroundColor: '#eab308', borderRadius: 4 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#1e293b' } } } }
+            data: { 
+                labels: ['Projeção Mensal'], 
+                datasets: [{ label: 'Proventos', data: [portfolio.reduce((a,b)=>a+b.monthlyIncome,0)], backgroundColor: '#eab308' }] 
+            },
+            options: { responsive: true, maintainAspectRatio: false }
         });
+    },
+
+    // --- RENDERIZAÇÃO DE ABAS DE PROVENTOS ---
+    renderDividends() {
+        // 1. Identifica o mês atual real para destaque
+        const now = new Date();
+        const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        
+        // 2. Busca todos os meses disponíveis no histórico
+        const availableMonths = dividendManager.getHistoryMonths();
+        
+        // Se a variável de seleção estiver nula (primeira carga), tenta setar o atual ou o último disponível
+        if (!app.selectedDividendMonth) {
+            app.selectedDividendMonth = availableMonths.includes(currentMonthStr) ? currentMonthStr : availableMonths[availableMonths.length - 1];
+        }
+
+        const grid = document.getElementById('dividends-grid');
+        const tickers = dividendManager.getOwnedTickers();
+        
+        if (tickers.length === 0) {
+            grid.innerHTML = '<div class="p-8 text-center text-slate-500">Adicione ativos primeiro.</div>';
+            return;
+        }
+
+        // 3. Constrói o HTML das Abas (Tabs)
+        let html = `
+            <div class="flex gap-2 overflow-x-auto pb-4 mb-4 custom-scrollbar whitespace-nowrap">`;
+            
+        availableMonths.forEach(m => {
+            const isCurrent = (m === currentMonthStr);
+            const isSelected = (m === app.selectedDividendMonth);
+            
+            // Lógica de Classes CSS
+            let btnClass = "px-4 py-2 rounded-lg font-bold text-sm transition-all border ";
+            
+            if (isSelected) {
+                btnClass += "bg-sky-600 border-sky-600 text-white shadow-lg ";
+            } else {
+                btnClass += "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 ";
+            }
+            
+            // Destaque Amarelo para o Mês Atual (se não estiver selecionado, põe borda amarela e texto amarelo)
+            if (isCurrent) {
+                if(isSelected) {
+                     // Se for atual E selecionado, mantem fundo azul mas com texto amarelo forte
+                     btnClass += "text-yellow-300 ring-2 ring-yellow-500 ring-offset-2 ring-offset-slate-900";
+                } else {
+                     // Se for atual mas NÃO selecionado
+                     btnClass += "text-yellow-500 border-yellow-500/50";
+                }
+            }
+
+            // Formatação da Data (2023-11 -> NOV/23)
+            const [ano, mes] = m.split('-');
+            const dateObj = new Date(parseInt(ano), parseInt(mes) - 1, 2); // dia 2 pra evitar timezone
+            const label = dateObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase().replace('.','');
+
+            html += `<button onclick="app.selectedDividendMonth = '${m}'; viewRenderer.renderDividends()" class="${btnClass}">
+                        ${label} ${isCurrent ? '•' : ''}
+                     </button>`;
+        });
+
+        html += `</div>`;
+
+        // 4. Constrói a Tabela para o mês selecionado
+        html += `
+            <div class="card-glass overflow-hidden animate-fade-in">
+                <div class="p-4 bg-slate-800/30 border-b border-slate-700/50 flex justify-between items-center">
+                    <span class="font-bold text-white text-sm">Referência: ${app.selectedDividendMonth}</span>
+                    <span class="text-xs text-slate-500">Valores unitários (R$)</span>
+                </div>
+                <table class="w-full text-left">
+                    <tbody class="divide-y divide-slate-800/50">`;
+
+        tickers.forEach(ticker => {
+            const val = dividendManager.getDividend(ticker, app.selectedDividendMonth);
+            html += `
+                <tr class="hover:bg-slate-800/30">
+                    <td class="p-4 pl-6 flex items-center gap-3">
+                        <div class="w-8 h-8 bg-slate-800 rounded flex items-center justify-center text-xs font-bold border border-slate-700 text-slate-300">${ticker.substring(0,2)}</div>
+                        <span class="font-bold text-white">${ticker}</span>
+                    </td>
+                    <td class="p-4 text-right">
+                        <input type="number" step="0.01" value="${val > 0 ? val : ''}" placeholder="0.00"
+                               class="bg-slate-900 border border-slate-700 rounded p-2 text-right text-white w-32 focus:border-sky-500 outline-none transition-all focus:bg-slate-800"
+                               onchange="dividendManager.setDividend('${ticker}', '${app.selectedDividendMonth}', this.value)">
+                    </td>
+                </tr>`;
+        });
+
+        html += `</tbody></table></div>`;
+        grid.innerHTML = html;
     },
 
     renderHistory() {
@@ -263,7 +356,6 @@ const viewRenderer = {
         const portfolio = dataManager.getConsolidatedPortfolio();
         let score = 100;
         const count = portfolio.length;
-        // Lógica simples de score
         if(count < 5) score -= 20;
         const maxConc = Math.max(...portfolio.map(p => p.totalCurrent)) / portfolio.reduce((a,b)=>a+b.totalCurrent,0);
         if(maxConc > 0.25) score -= 20;
@@ -314,9 +406,12 @@ const viewRenderer = {
         const inv = p.reduce((a,b)=>a+b.invested,0);
         const goal = dataManager.fireGoal;
         const pct = Math.min(100, (inc/goal)*100);
+        
         document.getElementById('fire-percentage').innerText = pct.toFixed(2);
         document.getElementById('fire-current-income').innerText = dataManager.formatMoney(inc);
-        document.getElementById('fire-target-income').innerText = dataManager.formatMoney(goal);
+        const targetEl = document.getElementById('fire-target-income');
+        if(targetEl) targetEl.innerText = dataManager.formatMoney(goal);
+        
         document.getElementById('fire-progress-bar').style.width = pct + '%';
         const dy = inv > 0 ? inc/inv : 0.008;
         const needed = goal/dy;
@@ -331,7 +426,8 @@ const viewRenderer = {
         if(p.length === 0) return;
         const contribution = parseFloat(document.getElementById('sim-monthly-contribution').value)||1000;
         const years = parseInt(document.getElementById('sim-years').value)||5;
-        document.getElementById('sim-years-display').innerText = years + ' anos';
+        const yearsEl = document.getElementById('sim-years-display');
+        if(yearsEl) yearsEl.innerText = years + ' anos';
         
         let pat = p.reduce((a,b)=>a+b.totalCurrent,0);
         const inc = p.reduce((a,b)=>a+b.monthlyIncome,0);
@@ -364,13 +460,12 @@ const viewRenderer = {
     }
 };
 
-// Expor para o escopo global
 window.viewRenderer = viewRenderer;
 window.app = app;
 
-// Inicialização
 document.addEventListener('DOMContentLoaded', () => {
-    // A inicialização é feita no data.js ou index.html dependendo da ordem de carga
-    // Mas viewRenderer precisa estar disponível.
-    if (window.dataManager) app.init();
+    if (window.dataManager) {
+        dataManager.init();
+        app.init();
+    }
 });

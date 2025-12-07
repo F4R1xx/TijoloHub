@@ -79,7 +79,52 @@ const app = {
         document.getElementById('asset-modal').classList.remove('hidden');
     },
 
-    closeModal() { document.getElementById('asset-modal').classList.add('hidden'); }
+    closeModal() { document.getElementById('asset-modal').classList.add('hidden'); },
+
+    // --- FUNÇÕES DE IMPORTAÇÃO EM LOTE ---
+    toggleBulkImport() {
+        const el = document.getElementById('bulk-import-section');
+        const icon = document.getElementById('bulk-import-icon');
+        if(el) {
+            el.classList.toggle('hidden');
+            if(icon) icon.classList.toggle('rotate-180');
+        }
+    },
+
+    processBulkDividends() {
+        const text = document.getElementById('bulk-dividends-input').value;
+        if(!text) { alert('Cole a lista primeiro.'); return; }
+
+        const lines = text.split('\n');
+        let count = 0;
+
+        lines.forEach(line => {
+            const cleanLine = line.trim();
+            if(!cleanLine) return;
+            const match = cleanLine.match(/^([A-Z0-9]{4,6})[\s\t;]+.*?([\d.,]+)/i);
+            
+            if(match) {
+                const ticker = match[1].toUpperCase();
+                let valStr = match[2].replace(',', '.');
+                if (valStr.indexOf('.') !== valStr.lastIndexOf('.')) {} // Simplificação
+                const val = parseFloat(valStr);
+                
+                if(ticker && !isNaN(val)) {
+                    dividendManager.setDividend(ticker, this.selectedDividendMonth, val);
+                    count++;
+                }
+            }
+        });
+
+        if(count > 0) {
+            alert(`${count} proventos importados com sucesso para ${this.selectedDividendMonth}!`);
+            document.getElementById('bulk-dividends-input').value = '';
+            this.toggleBulkImport();
+            viewRenderer.renderDividends();
+        } else {
+            alert('Nenhum dado válido encontrado. Certifique-se do formato: "TICKER VALOR".');
+        }
+    }
 };
 
 const viewRenderer = {
@@ -174,28 +219,68 @@ const viewRenderer = {
             options: { responsive: true, maintainAspectRatio: false }
         });
 
+        // --- ATUALIZAÇÃO: Gráfico de Proventos no Dashboard agora usa o Histórico Real ---
+        const divHistory = this.calculateDividendHistory(); // Pega o histórico calculado
+        const hasHistory = divHistory.length > 0 && divHistory.some(d => d.total > 0);
+
+        // Se tiver histórico real, usa ele. Se não, usa a projeção atual.
+        const divLabels = hasHistory 
+            ? divHistory.map(d => {
+                const [ano, mes] = d.month.split('-');
+                const dateObj = new Date(parseInt(ano), parseInt(mes) - 1, 2);
+                return dateObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase().replace('.','');
+              })
+            : ['Projeção Mensal'];
+            
+        const divValues = hasHistory
+            ? divHistory.map(d => d.total)
+            : [portfolio.reduce((a,b)=>a+b.monthlyIncome,0)];
+
         const ctxDiv = document.getElementById('historyDividendsChart');
         if(this.charts.div) this.charts.div.destroy();
         this.charts.div = new Chart(ctxDiv, {
             type: 'bar',
             data: { 
-                labels: ['Projeção Mensal'], 
-                datasets: [{ label: 'Proventos', data: [portfolio.reduce((a,b)=>a+b.monthlyIncome,0)], backgroundColor: '#eab308' }] 
+                labels: divLabels, 
+                datasets: [{ 
+                    label: hasHistory ? 'Recebido' : 'Projeção', 
+                    data: divValues, 
+                    backgroundColor: '#eab308',
+                    borderRadius: 4
+                }] 
             },
-            options: { responsive: true, maintainAspectRatio: false }
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                scales: {
+                    y: { 
+                        beginAtZero: true, 
+                        grid: { color: '#334155', drawBorder: false },
+                        ticks: { color: '#94a3b8', callback: (val) => 'R$ ' + val, font: { size: 10 } }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `R$ ${ctx.raw.toFixed(2)}`
+                        }
+                    }
+                }
+            }
         });
     },
 
     // --- RENDERIZAÇÃO DE ABAS DE PROVENTOS ---
     renderDividends() {
-        // 1. Identifica o mês atual real para destaque
         const now = new Date();
         const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-        
-        // 2. Busca todos os meses disponíveis no histórico
         const availableMonths = dividendManager.getHistoryMonths();
         
-        // Se a variável de seleção estiver nula (primeira carga), tenta setar o atual ou o último disponível
         if (!app.selectedDividendMonth) {
             app.selectedDividendMonth = availableMonths.includes(currentMonthStr) ? currentMonthStr : availableMonths[availableMonths.length - 1];
         }
@@ -208,15 +293,45 @@ const viewRenderer = {
             return;
         }
 
-        // 3. Constrói o HTML das Abas (Tabs)
+        const historyData = this.calculateDividendHistory();
+        const totalYear = historyData.reduce((acc, curr) => acc + curr.total, 0);
+
         let html = `
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 animate-fade-in">
+                <!-- Gráfico de Evolução -->
+                <div class="card-glass p-6 border-l-4 border-yellow-500">
+                    <div class="flex justify-between items-center mb-4">
+                        <div>
+                            <h4 class="section-title">Evolução (12 Meses)</h4>
+                            <p class="text-xs text-slate-400">Total: <span class="text-yellow-400 font-bold">${dataManager.formatMoney(totalYear)}</span></p>
+                        </div>
+                    </div>
+                    <div class="h-48 w-full">
+                        <canvas id="dividendEvolutionChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Nova Área de Importação em Lote -->
+                <div class="card-glass p-6 border-l-4 border-sky-500 h-fit">
+                    <div class="flex justify-between items-center cursor-pointer select-none" onclick="app.toggleBulkImport()">
+                        <h4 class="font-bold text-white flex items-center gap-2 text-sm"><i class="ph ph-file-text text-lg"></i> Importar em Lote (Excel/Texto)</h4>
+                        <i id="bulk-import-icon" class="ph ph-caret-down transition-transform"></i>
+                    </div>
+                    <div id="bulk-import-section" class="hidden mt-4 pt-4 border-t border-slate-700/50">
+                        <p class="text-[10px] text-slate-400 mb-2">Cole suas linhas (Ticker + Valor). Ex: Copie duas colunas do Excel.</p>
+                        <textarea id="bulk-dividends-input" rows="5" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white font-mono mb-3 focus:border-sky-500 outline-none resize-none custom-scrollbar" placeholder="HGLG11  1,10&#10;MXRF11  0,12"></textarea>
+                        <button onclick="app.processBulkDividends()" class="w-full bg-sky-600 hover:bg-sky-500 text-white py-2 rounded-lg text-xs font-bold transition-colors">Processar Lista</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navegação de Meses -->
             <div class="flex gap-2 overflow-x-auto pb-4 mb-4 custom-scrollbar whitespace-nowrap">`;
             
         availableMonths.forEach(m => {
             const isCurrent = (m === currentMonthStr);
             const isSelected = (m === app.selectedDividendMonth);
             
-            // Lógica de Classes CSS
             let btnClass = "px-4 py-2 rounded-lg font-bold text-sm transition-all border ";
             
             if (isSelected) {
@@ -225,20 +340,16 @@ const viewRenderer = {
                 btnClass += "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 ";
             }
             
-            // Destaque Amarelo para o Mês Atual (se não estiver selecionado, põe borda amarela e texto amarelo)
             if (isCurrent) {
                 if(isSelected) {
-                     // Se for atual E selecionado, mantem fundo azul mas com texto amarelo forte
                      btnClass += "text-yellow-300 ring-2 ring-yellow-500 ring-offset-2 ring-offset-slate-900";
                 } else {
-                     // Se for atual mas NÃO selecionado
                      btnClass += "text-yellow-500 border-yellow-500/50";
                 }
             }
 
-            // Formatação da Data (2023-11 -> NOV/23)
             const [ano, mes] = m.split('-');
-            const dateObj = new Date(parseInt(ano), parseInt(mes) - 1, 2); // dia 2 pra evitar timezone
+            const dateObj = new Date(parseInt(ano), parseInt(mes) - 1, 2); 
             const label = dateObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase().replace('.','');
 
             html += `<button onclick="app.selectedDividendMonth = '${m}'; viewRenderer.renderDividends()" class="${btnClass}">
@@ -248,7 +359,7 @@ const viewRenderer = {
 
         html += `</div>`;
 
-        // 4. Constrói a Tabela para o mês selecionado
+        // Tabela para inputs
         html += `
             <div class="card-glass overflow-hidden animate-fade-in">
                 <div class="p-4 bg-slate-800/30 border-b border-slate-700/50 flex justify-between items-center">
@@ -276,6 +387,90 @@ const viewRenderer = {
 
         html += `</tbody></table></div>`;
         grid.innerHTML = html;
+
+        setTimeout(() => this.renderDividendEvolutionChart(historyData), 50);
+    },
+
+    calculateDividendHistory() {
+        const allMonths = dividendManager.getHistoryMonths();
+        const months = allMonths.slice(-12);
+        const history = [];
+        
+        months.forEach(month => {
+            const portfolioQty = {};
+            
+            dataManager.transactions.forEach(t => {
+                if (t.date <= month) {
+                    if (!portfolioQty[t.ticker]) portfolioQty[t.ticker] = 0;
+                    portfolioQty[t.ticker] += t.qtd;
+                }
+            });
+            
+            let monthTotal = 0;
+            
+            Object.keys(portfolioQty).forEach(ticker => {
+                const qty = portfolioQty[ticker];
+                if (qty > 0) {
+                    const val = dividendManager.getDividend(ticker, month);
+                    monthTotal += qty * val;
+                }
+            });
+            
+            history.push({ month, total: monthTotal });
+        });
+        
+        return history;
+    },
+
+    renderDividendEvolutionChart(data) {
+        const ctx = document.getElementById('dividendEvolutionChart');
+        if (!ctx) return;
+        
+        const labels = data.map(d => {
+            const [ano, mes] = d.month.split('-');
+            const dateObj = new Date(parseInt(ano), parseInt(mes) - 1, 2);
+            return dateObj.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase();
+        });
+
+        const values = data.map(d => d.total);
+
+        if(this.charts.evolution) this.charts.evolution.destroy();
+        this.charts.evolution = new Chart(ctx, {
+            type: 'bar',
+            data: { 
+                labels: labels, 
+                datasets: [{ 
+                    label: 'Recebido (R$)', 
+                    data: values, 
+                    backgroundColor: '#eab308',
+                    borderRadius: 4,
+                    hoverBackgroundColor: '#facc15'
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false,
+                scales: {
+                    y: { 
+                        beginAtZero: true,
+                        grid: { color: '#334155', drawBorder: false },
+                        ticks: { color: '#94a3b8', callback: (val) => 'R$ ' + val, font: { size: 10 } }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', font: { size: 10 } }
+                    }
+                },
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `R$ ${ctx.raw.toFixed(2)}`
+                        }
+                    }
+                } 
+            }
+        });
     },
 
     renderHistory() {
